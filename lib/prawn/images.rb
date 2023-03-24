@@ -83,7 +83,12 @@ module Prawn
     # @private
     def build_image_object(file)
       image_content = verify_and_read_image(file)
-      image_sha1 = Digest::SHA1.hexdigest(image_content)
+
+      image_sha1 = if image_content.is_a?(Pathname)
+        Digest::SHA1.hexdigest(image_content.expand_path.to_s)
+      else
+        Digest::SHA1.hexdigest(image_content)
+      end
 
       # if this image has already been embedded, just reuse it
       if image_registry[image_sha1]
@@ -146,6 +151,9 @@ module Prawn
         io.binmode if io.respond_to?(:binmode)
         return io.read
       end
+
+      return io_or_path if io_or_path.is_a?(Pathname)
+
       # String or Pathname
       io_or_path = Pathname.new(io_or_path)
       raise ArgumentError, "#{io_or_path} not found" unless io_or_path.file?

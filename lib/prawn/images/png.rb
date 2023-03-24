@@ -11,6 +11,8 @@
 # This is free software. Please see the LICENSE and COPYING files for details.
 
 require 'stringio'
+require 'pathname'
+
 module Prawn
   module Images
     # A convenience class that wraps the logic for extracting the parts
@@ -26,6 +28,7 @@ module Prawn
       attr_accessor :scaled_width, :scaled_height
 
       def self.can_render?(image_blob)
+        return false if image_blob.is_a?(Pathname)
         image_blob[0, 8].unpack('C*') == [137, 80, 78, 71, 13, 10, 26, 10]
       end
 

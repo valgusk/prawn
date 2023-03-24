@@ -9,6 +9,7 @@
 # This is free software. Please see the LICENSE and COPYING files for details.
 
 require 'stringio'
+require 'pathname'
 
 module Prawn
   module Images
@@ -29,7 +30,14 @@ module Prawn
       ].freeze
 
       def self.can_render?(image_blob)
-        image_blob[0, 3].unpack('C*') == [255, 216, 255]
+        spec =
+          if image_blob.is_a?(Pathname)
+            File.read(image_blob, 3, binmode: true)
+          else
+            image_blob[0, 3]
+          end
+
+        spec.unpack('C*') == [255, 216, 255]
       end
 
       # Process a new JPG image
@@ -39,8 +47,13 @@ module Prawn
       def initialize(data)
         super()
         @data = data
-        d = StringIO.new(@data)
-        d.binmode
+
+        if data.is_a?(Pathname)
+          d = File.open(@data, 'rb')
+        else
+          d = StringIO.new(@data)
+          d.binmode
+        end
 
         c_marker = 0xff # Section marker.
         d.seek(2) # Skip the first two bytes of JPEG identifier.
@@ -55,6 +68,9 @@ module Prawn
 
           d.seek(length - 2, IO::SEEK_CUR)
         end
+
+      ensure
+        d&.close if data.is_a?(Pathname)
       end
 
       # Build a PDF object representing this image in +document+, and return
