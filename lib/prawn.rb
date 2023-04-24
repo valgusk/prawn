@@ -73,6 +73,8 @@ require_relative 'prawn/outline'
 require_relative 'prawn/grid'
 require_relative 'prawn/view'
 require_relative 'prawn/image_handler'
+require_relative 'prawn/bin'
+require_relative 'prawn/file_backed_stream_data'
 
 Prawn.image_handler.register(Prawn::Images::PNG)
 Prawn.image_handler.register(Prawn::Images::JPG)

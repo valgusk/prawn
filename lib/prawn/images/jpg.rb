@@ -49,7 +49,10 @@ module Prawn
         @data = data
 
         if data.is_a?(Pathname)
-          d = File.open(@data, 'rb')
+          data = FileBackedStreamData.new(data)
+          @data = data
+
+          d = File.open(@data.pathname, 'rb')
         else
           d = StringIO.new(@data)
           d.binmode
@@ -70,7 +73,7 @@ module Prawn
         end
 
       ensure
-        d&.close if data.is_a?(Pathname)
+        d&.close if data.is_a?(FileBackedStreamData)
       end
 
       # Build a PDF object representing this image in +document+, and return

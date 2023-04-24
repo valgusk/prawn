@@ -28,8 +28,14 @@ module Prawn
       attr_accessor :scaled_width, :scaled_height
 
       def self.can_render?(image_blob)
-        return false if image_blob.is_a?(Pathname)
-        image_blob[0, 8].unpack('C*') == [137, 80, 78, 71, 13, 10, 26, 10]
+        spec =
+          if image_blob.is_a?(Pathname)
+            File.read(image_blob, 8, binmode: true)
+          else
+            image_blob[0, 8]
+          end
+
+        spec.unpack('C*') == [137, 80, 78, 71, 13, 10, 26, 10]
       end
 
       # Process a new PNG image
@@ -38,62 +44,31 @@ module Prawn
       #
       def initialize(data)
         super()
-        data = StringIO.new(data.dup)
 
-        data.read(8) # Skip the default header
+        if data.is_a?(Pathname)
+          tempfile = Tempfile.new
 
-        @palette = +''
-        @img_data = +''
-        @transparency = {}
+          loader_results =
+            Prawn::Bin.exec(:load_png_data, path: data, result_path: tempfile.path)
 
-        loop do
-          chunk_size = data.read(4).unpack1('N')
-          section = data.read(4)
-          case section
-          when 'IHDR'
-            # we can grab other interesting values from here (like width,
-            # height, etc)
-            values = data.read(chunk_size).unpack('NNCCCCC')
+          @img_data = FileBackedStreamData.new(Pathname.new(tempfile.path), file: tempfile)
+        else
+          loader_results = Prawn::Images::PNGHelpers::DataLoader.
+            new(data: data.dup).
+            call
 
-            @width = values[0]
-            @height = values[1]
-            @bits = values[2]
-            @color_type = values[3]
-            @compression_method = values[4]
-            @filter_method = values[5]
-            @interlace_method = values[6]
-          when 'PLTE'
-            @palette << data.read(chunk_size)
-          when 'IDAT'
-            @img_data << data.read(chunk_size)
-          when 'tRNS'
-            # This chunk can only occur once and it must occur after the
-            # PLTE chunk and before the IDAT chunk
-            @transparency = {}
-            case @color_type
-            when 3
-              @transparency[:palette] = data.read(chunk_size).unpack('C*')
-            when 0
-              # Greyscale. Corresponding to entries in the PLTE chunk.
-              # Grey is two bytes, range 0 .. (2 ^ bit-depth) - 1
-              grayval = data.read(chunk_size).unpack1('n')
-              @transparency[:grayscale] = grayval
-            when 2
-              # True colour with proper alpha channel.
-              @transparency[:rgb] = data.read(chunk_size).unpack('nnn')
-            end
-          when 'IEND'
-            # we've got everything we need, exit the loop
-            break
-          else
-            # unknown (or un-important) section, skip over it
-            data.seek(data.pos + chunk_size)
-          end
-
-          data.read(4) # Skip the CRC
+          @img_data = loader_results[:img_data]
         end
 
-        @img_data = Zlib::Inflate.inflate(@img_data)
+        @palette = loader_results[:palette]
+        @transparency = loader_results[:transparency]
+        @width = loader_results[:width]
+        @height = loader_results[:height]
+        @bits = loader_results[:bits]
+        @color_type = loader_results[:color_type]
+        @compression_method = loader_results[:compression_method]
+        @filter_method = loader_results[:filter_method]
+        @interlace_method = loader_results[:interlace_method]
       end
 
       # number of color components to each pixel
@@ -265,6 +240,8 @@ module Prawn
       private
 
       def split_image_data
+        raise 'nope' if @img_data.is_a?(FileBackedStreamData)
+
         alpha_bytes = bits / 8
         color_bytes = colors * bits / 8
 
@@ -301,6 +278,8 @@ module Prawn
       end
 
       def generate_alpha_channel
+        raise 'nope' if @img_data.is_a?(FileBackedStreamData)
+
         alpha_palette = Hash.new(0xff)
         0.upto(palette.bytesize / 3) do |n|
           alpha_palette[n] = @transparency[:palette][n] || 0xff
